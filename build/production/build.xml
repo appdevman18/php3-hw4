@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+
+<project name="php3" default="switch" basedir=".\">
+
+    <property name="domain_path" value="${project.basedir}"/>
+    <property name="target_path" value="${domain_path}\..\server\${build.time}"/>
+    <property name="symlink_path" value="${domain_path}\..\server\current"/>
+
+    <target name="vars">
+        <php returnProperty="build.time" function="date">
+            <param value="Y-m-d-H-i-s"/>
+        </php>
+        <echo msg="Testing phing..."/>
+        <echo msg="Current time: ${build.time}."/>
+        <echo msg="App directory: ${project.basedir}."/>
+        <echo msg="Target directory: ${target_path}."/>
+        <echo msg="Symlink: ${symlink_path}."/>
+    </target>
+
+    <target name="copy_files" depends="vars">
+        <echo msg="Copying files..."/>
+        <copy todir="${target_path}" overwrite="true">
+            <fileset dir="${domain_path}">
+                <include name="**"/>
+                <exclude name="vendor/**"/>
+                <exclude name="node_modules/**"/>
+                <exclude name=".idea/**"/>
+                <exclude name="*.env"/>
+            </fileset>
+        </copy>
+        <echo msg="Copied files."/>
+    </target>
+
+    <target name="env_config" depends="copy_files">
+        <echo msg="Copying env files..."/>
+        <copy todir="${target_path}" file="${domain_path}/build/production/.env" overwrite="true">
+            <filterchain>
+                <replacetokens begintoken="{{" endtoken="}}">
+                    <token key="domain" value="http://php3-hw1.local"/>
+                    <token key="db.user" value="${db.user}"/>
+                    <token key="db.password" value="${db.password}"/>
+                </replacetokens>
+            </filterchain>
+        </copy>
+        <echo msg="Copied env files."/>
+    </target>
+
+    <target name="composer" depends="env_config">
+        <echo msg="Composer installing..."/>
+        <exec command="composer install" dir="${target_path}" passthru="true"/>
+        <exec command="php artisan key:generate" dir="${target_path}" passthru="true"/>
+        <echo msg="Composer installed."/>
+		<echo msg="npm installing..."/>
+        <exec command="npm install" dir="${target_path}" passthru="true"/>
+        <exec command="npm run dev" dir="${target_path}" passthru="true"/>
+        <echo msg="npm installed."/>
+    </target>
+
+    <target name="migrations_seeders" depends="composer">
+        <echo msg="Starting migrations and seeders..."/>
+        <exec command="php artisan migrate --seed" dir="${target_path}" passthru="true" checkreturn="true"/>
+        <echo msg="End migrations and seeders."/>
+    </target>
+
+    <target name="tests" depends="migrations_seeders">
+        <echo msg="Starting test..."/>
+        <exec command="${target_path}/vendor/bin/phpunit tests/Unit/UserTest" dir="${target_path}" passthru="true" checkreturn="true"/>
+        <echo msg="End test."/>
+    </target>
+
+    <target name="cron" depends="tests">
+        <echo msg="Starting cron..."/>
+        <exec command="php artisan schedule:run" dir="${target_path}" passthru="true" checkreturn="true"/>
+        <echo msg="Cron working..."/>
+    </target>    
+
+    <target name="switch" depends="cron">
+        <echo msg="Creating symlink..."/>
+        <symlink target="${target_path}" link="${symlink_path}" overwrite="true"/>
+        <echo msg="Created symlink."/>
+    </target>
+
+</project>
